@@ -25,7 +25,7 @@ pub fn print_files(folders_path: &str) -> io::Result<()>
     Ok(())
 }
 
-pub fn read_files(folders_path: &str) -> io::Result<HashMap<String, String>>
+pub fn read_txt_files(folders_path: &str) -> io::Result<HashMap<String, String>>
 {
     let mut result: HashMap<String, String> = HashMap::new();
 
@@ -78,7 +78,7 @@ mod tests
     {
         let folders_path: &str = "Assets\\TestFiles";
 
-        let result = read_files(folders_path)?;
+        let result = read_txt_files(folders_path)?;
 
         for (key, value) in result
         {
