@@ -5,11 +5,6 @@ use std::collections::HashMap;
 use walkdir::WalkDir;
 
 
-pub fn files_hello()
-{
-    println!("Hello, From files.rs")
-}
-
 pub fn print_files(folders_path: &str) -> io::Result<()>
 {
     for file_entry in WalkDir::new(folders_path)
