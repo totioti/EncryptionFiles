@@ -1,6 +1,8 @@
 use std::io;
 use std::fs;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Write;
 
 use walkdir::WalkDir;
 
@@ -60,6 +62,14 @@ pub fn read_txt_files(folders_path: &str) -> io::Result<HashMap<String, String>>
     Ok(result)
 }
 
+pub fn write_txt_file(file_path: &str, file_content: &str) -> io::Result<()>
+{
+    let mut file = File::create(file_path)?;
+    file.write_all(file_content.as_bytes())?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests
 {
@@ -84,6 +94,17 @@ mod tests
         {
             println!("{}: {}", key, value);
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_write_txt() -> io::Result<()>
+    {
+        let file_path: &str = "Assets\\TestFiles\\test_writing.txt";
+        let content: &str = "Some Text for Writing.";
+
+        let _ = write_txt_file(file_path, content);
 
         Ok(())
     }
