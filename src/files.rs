@@ -1,6 +1,8 @@
 use std::io;
 use std::fs;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Write;
 
 use walkdir::WalkDir;
 
@@ -25,7 +27,7 @@ pub fn print_files(folders_path: &str) -> io::Result<()>
     Ok(())
 }
 
-pub fn read_files(folders_path: &str) -> io::Result<HashMap<String, String>>
+pub fn read_txt_files(folders_path: &str) -> io::Result<HashMap<String, String>>
 {
     let mut result: HashMap<String, String> = HashMap::new();
 
@@ -60,6 +62,14 @@ pub fn read_files(folders_path: &str) -> io::Result<HashMap<String, String>>
     Ok(result)
 }
 
+pub fn write_txt_file(file_path: &str, file_content: &str) -> io::Result<()>
+{
+    let mut file = File::create(file_path)?;
+    file.write_all(file_content.as_bytes())?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests
 {
@@ -78,12 +88,23 @@ mod tests
     {
         let folders_path: &str = "Assets\\TestFiles";
 
-        let result = read_files(folders_path)?;
+        let result = read_txt_files(folders_path)?;
 
         for (key, value) in result
         {
             println!("{}: {}", key, value);
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_write_txt() -> io::Result<()>
+    {
+        let file_path: &str = "Assets\\TestFiles\\test_writing.txt";
+        let content: &str = "Some Text for Writing.";
+
+        let _ = write_txt_file(file_path, content);
 
         Ok(())
     }
