@@ -70,6 +70,40 @@ pub fn write_txt_file(file_path: &str, file_content: &str) -> io::Result<()>
     Ok(())
 }
 
+pub fn apply_to_files_content(folders_path: &str, function: fn(file_content: &str) -> io::Result<&str>) -> io::Result<()>
+{
+    let files_content = read_txt_files(folders_path)?;
+
+    for (file_path, file_content) in files_content
+    {
+        let _ = write_txt_file(file_path.as_str(), function(file_content.as_str())?);
+    }
+
+    Ok(())
+}
+
+pub fn read_pdf_files(folders_path: &str) -> io::Result<HashMap<String, String>>
+{
+    let result: HashMap<String, String> = HashMap::new();
+
+    for file_entry in WalkDir::new(folders_path)
+    {
+        let entry = match file_entry {
+            Ok(entry) => { entry }
+            Err(error) =>
+                {
+                    println!("[ERROR] {}", error);
+
+                    continue;
+                }
+        };
+
+        todo!();
+    }
+
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests
 {
@@ -107,5 +141,33 @@ mod tests
         let _ = write_txt_file(file_path, content);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_apply_to_files_content()
+    {
+        let function = |file_content: &str| -> io::Result<&str>
+            {
+                Ok("Shall I compare thee to a summer's day?
+Thou art more lovely and more temperate:
+Rough winds do shake the darling buds of May,
+And summer's lease hath all too short a date:
+
+Sometime too hot the eye of heaven shines,
+And often is his gold complexion dimmed;
+And every fair from fair sometime declines,
+By chance or nature's changing course untrimmed;
+
+But thy eternal summer shall not fade
+Nor lose possession of that fair thou owest;
+Nor shall Death brag thou wanderest in his shade,
+When in eternal lines to time thou growest:
+
+So long as men can breathe or eyes can see,
+So long lives this, and this gives life to thee.") };
+
+        let folder_path = "Assets\\TestFiles";
+
+        let _ = apply_to_files_content(folder_path, function);
     }
 }
