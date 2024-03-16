@@ -3,6 +3,7 @@ use std::fs;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
+use rayon::prelude::*;
 
 use walkdir::WalkDir;
 use lopdf::Document;
@@ -10,60 +11,42 @@ use lopdf::Document;
 
 pub fn print_files(folders_path: &str) -> io::Result<()>
 {
-    for file_entry in WalkDir::new(folders_path)
-    {
-        let entry = match file_entry {
-            Ok(entry) => { entry }
-            Err(error) =>
-                {
-                    println!("[ERROR] {}", error);
+    let entries = WalkDir::new(folders_path)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_type().is_file());
 
-                    continue;
-                }
-        };
-
-        println!("{}", entry.path().display());
-    }
+    let _ = entries
+        .par_bridge()
+        .for_each(|entry|
+            {
+                println!("{}", entry.path().display());
+            });
 
     Ok(())
 }
 
 pub fn read_txt_files(folders_path: &str) -> io::Result<HashMap<String, String>>
 {
-    let mut result: HashMap<String, String> = HashMap::new();
+    let entries = WalkDir::new(folders_path)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_type().is_file() &&
+            entry.path().extension().unwrap_or_default() == "txt");
 
-    for file_entry in WalkDir::new(folders_path)
-    {
-        let entry = match file_entry {
-            Ok(entry) => { entry }
-            Err(error) =>
-                {
-                    println!("[ERROR] {}", error);
 
-                    continue;
-                }
-        };
+    let result = entries
+        .par_bridge()
+        .map(|entry| -> (String, String)
+            {
+                let path = entry.path();
+                let content= fs::read_to_string(path).unwrap();
 
-        let file_path = entry.path();
-        if file_path.extension().unwrap_or_default() != "txt"
-        {
-            continue;
-        }
+                let string_path = String::from(path.to_str().to_owned().unwrap());
 
-        let file_content= match fs::read_to_string(file_path)
-        {
-            Ok(content) => { content }
-            Err(error) =>
-                {
-                    println!("[ERROR] {}", error);
-
-                    continue;
-                }
-        };
-
-        let file_path_string = String::from(file_path.to_str().unwrap());
-        result.insert(file_path_string, file_content);
-    }
+                return (string_path, content)
+            })
+        .collect();
 
     Ok(result)
 }
@@ -78,61 +61,43 @@ pub fn write_txt_file(file_path: &str, file_content: &str) -> io::Result<()>
 
 pub fn apply_to_files_content(folders_path: &str, function: fn(file_content: &str) -> io::Result<&str>) -> io::Result<()>
 {
-    let files_content = read_txt_files(folders_path)?;
-
-    for (file_path, file_content) in files_content
-    {
-        let _ = write_txt_file(file_path.as_str(), function(file_content.as_str())?);
-    }
+    let _ = read_txt_files(folders_path)?
+        .iter().for_each(|(path, content)|
+        {
+            write_txt_file(path.as_str(), function(content.as_str()).unwrap()).unwrap();
+        });
 
     Ok(())
 }
 
 pub fn read_pdf_files(folders_path: &str) -> io::Result<HashMap<String, String>>
 {
-    let mut result: HashMap<String, String> = HashMap::new();
+    let entries = WalkDir::new(folders_path)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_type().is_file() &&
+            entry.path().extension().unwrap_or_default() == "pdf");
 
-    for file_entry in WalkDir::new(folders_path)
-    {
-        let entry = match file_entry {
-            Ok(entry) => { entry }
-            Err(error) =>
-                {
-                    println!("[ERROR] {}", error);
-
-                    continue;
-                }
-        };
-
-        let file_path = entry.path();
-        if file_path.extension().unwrap_or_default() == "pdf"
-        {
-            match Document::load(file_path)
+    let result = entries
+        .par_bridge()
+        .map(|entry| -> (String, String)
             {
-                Ok(document) =>
-                    {
-                        let mut content = String::new();
+                let file_path = entry.path();
+                let document = Document::load(file_path).unwrap();
 
-                        for (page_number, _) in document.get_pages()
+                let content = document
+                    .get_pages()
+                    .iter()
+                    .map(|(&number, _)|
                         {
-                            let page_number = page_number as u32;
-                            let extracted = document.extract_text(&[page_number]).unwrap_or_default();
+                            let number = number;
+                            return document.extract_text(&[number]).unwrap_or_default();
+                        }).collect();
 
-                            content.push_str(extracted.as_str());
-                        }
-
-                        let file_path_string = String::from(file_path.to_str().unwrap());
-                        result.insert(file_path_string, content);
-                    }
-                Err(error) =>
-                    {
-                        println!("[ERROR] {}", error);
-
-                        continue;
-                    }
-            }
-        }
-    }
+                let file_path_string = String::from(file_path.to_str().unwrap());
+                return (file_path_string, content);
+            })
+        .collect();
 
     Ok(result)
 }
@@ -169,13 +134,12 @@ mod tests
     fn test_reading_pdf() -> io::Result<()>
     {
         let folders_path: &str = "Assets\\TestFiles";
-
-        let result = read_pdf_files(folders_path)?;
-
-        for (key, value) in result
-        {
-            println!("{}: {}", key, value);
-        }
+        let _ = read_pdf_files(folders_path)?
+            .iter()
+            .for_each(|(path, _)|
+                {
+                    println!("{}", path);
+                });
 
         Ok(())
     }
@@ -198,7 +162,9 @@ mod tests
             {
                 _ = file_content;
 
-                Ok("Shall I compare thee to a summer's day?
+                Ok("Test:
+
+Shall I compare thee to a summer's day?
 Thou art more lovely and more temperate:
 Rough winds do shake the darling buds of May,
 And summer's lease hath all too short a date:
