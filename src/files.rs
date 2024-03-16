@@ -5,6 +5,7 @@ use std::fs::File;
 use std::io::Write;
 
 use walkdir::WalkDir;
+use lopdf::Document;
 
 
 pub fn print_files(folders_path: &str) -> io::Result<()>
@@ -44,6 +45,11 @@ pub fn read_txt_files(folders_path: &str) -> io::Result<HashMap<String, String>>
         };
 
         let file_path = entry.path();
+        if file_path.extension().unwrap_or_default() != "txt"
+        {
+            continue;
+        }
+
         let file_content= match fs::read_to_string(file_path)
         {
             Ok(content) => { content }
@@ -84,7 +90,7 @@ pub fn apply_to_files_content(folders_path: &str, function: fn(file_content: &st
 
 pub fn read_pdf_files(folders_path: &str) -> io::Result<HashMap<String, String>>
 {
-    let result: HashMap<String, String> = HashMap::new();
+    let mut result: HashMap<String, String> = HashMap::new();
 
     for file_entry in WalkDir::new(folders_path)
     {
@@ -98,7 +104,34 @@ pub fn read_pdf_files(folders_path: &str) -> io::Result<HashMap<String, String>>
                 }
         };
 
-        todo!();
+        let file_path = entry.path();
+        if file_path.extension().unwrap_or_default() == "pdf"
+        {
+            match Document::load(file_path)
+            {
+                Ok(document) =>
+                    {
+                        let mut content = String::new();
+
+                        for (page_number, _) in document.get_pages()
+                        {
+                            let page_number = page_number as u32;
+                            let extracted = document.extract_text(&[page_number]).unwrap_or_default();
+
+                            content.push_str(extracted.as_str());
+                        }
+
+                        let file_path_string = String::from(file_path.to_str().unwrap());
+                        result.insert(file_path_string, content);
+                    }
+                Err(error) =>
+                    {
+                        println!("[ERROR] {}", error);
+
+                        continue;
+                    }
+            }
+        }
     }
 
     Ok(result)
@@ -133,6 +166,21 @@ mod tests
     }
 
     #[test]
+    fn test_reading_pdf() -> io::Result<()>
+    {
+        let folders_path: &str = "Assets\\TestFiles";
+
+        let result = read_pdf_files(folders_path)?;
+
+        for (key, value) in result
+        {
+            println!("{}: {}", key, value);
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn test_write_txt() -> io::Result<()>
     {
         let file_path: &str = "Assets\\TestFiles\\test_writing.txt";
@@ -148,6 +196,8 @@ mod tests
     {
         let function = |file_content: &str| -> io::Result<&str>
             {
+                _ = file_content;
+
                 Ok("Shall I compare thee to a summer's day?
 Thou art more lovely and more temperate:
 Rough winds do shake the darling buds of May,
@@ -164,7 +214,8 @@ Nor shall Death brag thou wanderest in his shade,
 When in eternal lines to time thou growest:
 
 So long as men can breathe or eyes can see,
-So long lives this, and this gives life to thee.") };
+So long lives this, and this gives life to thee.")
+            };
 
         let folder_path = "Assets\\TestFiles";
 
