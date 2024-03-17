@@ -1,106 +1,106 @@
 use std::io;
 use std::fs;
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{File};
 use std::io::Write;
-use rayon::prelude::*;
+use std::path::PathBuf;
 
 use walkdir::WalkDir;
 use lopdf::Document;
+use rayon::prelude::*;
 
-
-pub fn print_files(folders_path: &str) -> io::Result<()>
+#[derive(Debug)]
+struct Files
 {
-    let entries = WalkDir::new(folders_path)
-        .into_iter()
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| entry.file_type().is_file());
-
-    let _ = entries
-        .par_bridge()
-        .for_each(|entry|
-            {
-                println!("{}", entry.path().display());
-            });
-
-    Ok(())
+    paths: Vec<PathBuf>,
+    files: HashMap<PathBuf, String>,
 }
 
-pub fn read_txt_files(folders_path: &str) -> io::Result<HashMap<String, String>>
+impl Files
 {
-    let entries = WalkDir::new(folders_path)
-        .into_iter()
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| entry.file_type().is_file() &&
-            entry.path().extension().unwrap_or_default() == "txt");
+    fn new(root: &str) -> Files
+    {
+        let paths: Vec<PathBuf> = WalkDir::new(root)
+            .into_iter()
+            .par_bridge()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_type().is_file())
+            .map(|entry| entry.path().to_owned())
+            .collect();
+
+        let files: HashMap<PathBuf, String> = HashMap::new();
+
+        return Files { paths, files };
+    }
 
 
-    let result = entries
-        .par_bridge()
-        .map(|entry| -> (String, String)
-            {
-                let path = entry.path();
-                let content= fs::read_to_string(path).unwrap();
+    pub fn print_files(&self) -> io::Result<()>
+    {
+        let _ = self.paths
+            .iter()
+            .par_bridge()
+            .for_each(|entry| println!("{}", entry.display()));
 
-                let string_path = String::from(path.to_str().to_owned().unwrap());
+        Ok(())
+    }
 
-                return (string_path, content)
-            })
-        .collect();
+    pub fn read_txt_files(&mut self) -> io::Result<()>
+    {
+        let result: HashMap<PathBuf, String> = self.paths
+            .iter()
+            .filter(|path| path.extension().unwrap_or_default() == "txt")
+            .par_bridge()
+            .map(|path| -> (PathBuf, String)
+                {
+                    let content= fs::read_to_string(path).unwrap();
 
-    Ok(result)
+                    return (path.to_owned(), content);
+                }).collect();
+
+        self.files.extend(result);
+
+        Ok(())
+    }
+
+
+    pub fn write_txt_file(&mut self, file_path: &str, file_content: &str) -> io::Result<()>
+    {
+        let mut file = File::create(file_path)?;
+        file.write_all(file_content.as_bytes())?;
+
+        self.paths.push(PathBuf::from(file_path));
+
+        Ok(())
+    }
+    pub fn read_pdf_files(&mut self) -> io::Result<()>
+    {
+        let result: HashMap<PathBuf, String> = self.paths
+            .iter()
+            .filter(|path| path.extension().unwrap_or_default() == "pdf")
+            .par_bridge()
+            .map(|path| -> (PathBuf, String)
+                {
+                    let document = Document::load(path).unwrap();
+
+                    let content = document
+                        .get_pages()
+                        .iter()
+                        .map(|(&number, _)|
+                            {
+                                let number = number;
+                                return document.extract_text(&[number]).unwrap_or_default();
+                            }).collect();
+
+                    return(path.to_owned(), content);
+                }).collect();
+
+        self.files.extend(result);
+
+        Ok(())
+    }
+
 }
 
-pub fn write_txt_file(file_path: &str, file_content: &str) -> io::Result<()>
-{
-    let mut file = File::create(file_path)?;
-    file.write_all(file_content.as_bytes())?;
-
-    Ok(())
-}
-
-pub fn apply_to_files_content(folders_path: &str, function: fn(file_content: &str) -> io::Result<&str>) -> io::Result<()>
-{
-    let _ = read_txt_files(folders_path)?
-        .iter().for_each(|(path, content)|
-        {
-            write_txt_file(path.as_str(), function(content.as_str()).unwrap()).unwrap();
-        });
-
-    Ok(())
-}
-
-pub fn read_pdf_files(folders_path: &str) -> io::Result<HashMap<String, String>>
-{
-    let entries = WalkDir::new(folders_path)
-        .into_iter()
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| entry.file_type().is_file() &&
-            entry.path().extension().unwrap_or_default() == "pdf");
-
-    let result = entries
-        .par_bridge()
-        .map(|entry| -> (String, String)
-            {
-                let file_path = entry.path();
-                let document = Document::load(file_path).unwrap();
-
-                let content = document
-                    .get_pages()
-                    .iter()
-                    .map(|(&number, _)|
-                        {
-                            let number = number;
-                            return document.extract_text(&[number]).unwrap_or_default();
-                        }).collect();
-
-                let file_path_string = String::from(file_path.to_str().unwrap());
-                return (file_path_string, content);
-            })
-        .collect();
-
-    Ok(result)
-}
 
 #[cfg(test)]
 mod tests
@@ -108,83 +108,56 @@ mod tests
     use super::*;
 
     #[test]
-    fn test_print_files()
+    fn test_print() -> io::Result<()>
     {
-        let folders_path: &str = "Assets\\TestFiles";
+        let root = "Assets\\TestFiles";
+        let files = Files::new(root);
 
-        let _ = print_files(folders_path);
+        let _ = files.print_files()?;
+
+        Ok(())
     }
-
     #[test]
-    fn test_reading() -> io::Result<()>
+    fn test_write_txt() -> io::Result<()>
     {
-        let folders_path: &str = "Assets\\TestFiles";
+        let root = "Assets\\TestFiles\\";
+        let path = "Assets\\TestFiles\\test_writing.txt";
+        let content= fs::read_to_string("Assets\\poetry.txt").unwrap();
 
-        let result = read_txt_files(folders_path)?;
+        let mut files = Files::new(root);
 
-        for (key, value) in result
+        let _ = files.write_txt_file(path, content.as_str())?;
+
+        Ok(())
+    }
+    #[test]
+    fn read_txt_files() -> io::Result<()>
+    {
+        let root = "Assets\\TestFiles";
+        let mut files = Files::new(root);
+
+        let _ = files.read_txt_files()?;
+
+        for (path, content) in files.files
         {
-            println!("{}: {}", key, value);
+            println!("{}: {}", path.display(), content);
         }
 
         Ok(())
     }
-
     #[test]
-    fn test_reading_pdf() -> io::Result<()>
+    fn read_pdf_files() -> io::Result<()>
     {
-        let folders_path: &str = "Assets\\TestFiles";
-        let _ = read_pdf_files(folders_path)?
-            .iter()
-            .for_each(|(path, _)|
-                {
-                    println!("{}", path);
-                });
+        let root = "Assets\\TestFiles";
+        let mut files = Files::new(root);
+
+        let _ = files.read_pdf_files()?;
+
+        for (path, content) in files.files
+        {
+            println!("{}: {}", path.display(), content);
+        }
 
         Ok(())
-    }
-
-    #[test]
-    fn test_write_txt() -> io::Result<()>
-    {
-        let file_path: &str = "Assets\\TestFiles\\test_writing.txt";
-        let content: &str = "Some Text for Writing.";
-
-        let _ = write_txt_file(file_path, content);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_apply_to_files_content()
-    {
-        let function = |file_content: &str| -> io::Result<&str>
-            {
-                _ = file_content;
-
-                Ok("Test:
-
-Shall I compare thee to a summer's day?
-Thou art more lovely and more temperate:
-Rough winds do shake the darling buds of May,
-And summer's lease hath all too short a date:
-
-Sometime too hot the eye of heaven shines,
-And often is his gold complexion dimmed;
-And every fair from fair sometime declines,
-By chance or nature's changing course untrimmed;
-
-But thy eternal summer shall not fade
-Nor lose possession of that fair thou owest;
-Nor shall Death brag thou wanderest in his shade,
-When in eternal lines to time thou growest:
-
-So long as men can breathe or eyes can see,
-So long lives this, and this gives life to thee.")
-            };
-
-        let folder_path = "Assets\\TestFiles";
-
-        let _ = apply_to_files_content(folder_path, function);
     }
 }
