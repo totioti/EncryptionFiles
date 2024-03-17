@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 walkdir = "2.5.0"
 lopdf = "0.32.0"
+rayon = "1.9.0"
