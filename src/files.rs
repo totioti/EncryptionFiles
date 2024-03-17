@@ -33,7 +33,6 @@ impl Files
         return Files { paths, files };
     }
 
-
     pub fn print_files(&self) -> io::Result<()>
     {
         let _ = self.paths
@@ -62,7 +61,6 @@ impl Files
         Ok(())
     }
 
-
     pub fn write_txt_file(&mut self, file_path: &str, file_content: &str) -> io::Result<()>
     {
         let mut file = File::create(file_path)?;
@@ -72,6 +70,7 @@ impl Files
 
         Ok(())
     }
+
     pub fn read_pdf_files(&mut self) -> io::Result<()>
     {
         let result: HashMap<PathBuf, String> = self.paths
@@ -98,7 +97,6 @@ impl Files
 
         Ok(())
     }
-
 }
 
 
